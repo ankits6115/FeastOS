@@ -2,7 +2,7 @@
 
 **Courses:** Operating Systems (TCS-502) & Database Management Systems (TCS-503)  
 **Team:** Team 205 (Foodsters)  
-**Language:** Pure C (C11 standard, cross-platform)
+**Language:** C
 
 ---
 
