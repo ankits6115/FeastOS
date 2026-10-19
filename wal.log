@@ -1,0 +1,8 @@
+[2026-10-16 09:24:47] <START T_1001>
+[2026-10-16 09:24:47] <T_1001, ORDER_1: [old=Pending (In Queue), new=Out for Delivery], DRIVER_102: [old=Available, new=Busy (On Delivery)]>
+[2026-10-16 09:24:47] <COMMIT T_1001>
+[2026-10-16 09:24:47] <START T_1002>
+[2026-10-16 09:24:47] <ABORT T_1002, REASON=SIMULATED_DRIVER_DISCONNECT_FAULT>
+[2026-10-18 18:25:54] <START T_1001>
+[2026-10-18 18:25:54] <T_1001, ORDER_1: [old=Pending (In Queue), new=Out for Delivery], DRIVER_102: [old=Available, new=Busy (On Delivery)]>
+[2026-10-18 18:25:54] <COMMIT T_1001>
