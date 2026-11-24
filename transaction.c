@@ -68,7 +68,7 @@ bool txn_claim_order(TransactionContext *ctx, int order_id, int driver_id) {
     }
 
     /* Check Concurrency / Lock: Is order already claimed? */
-    if (order.status != STATUS_PENDING) {
+    if (order.status != FEAST_STATUS_PENDING) {
         printf(ANSI_YELLOW "  [Txn Conflict] Order #%d is already locked/processed (Status: %s)!\n" ANSI_RESET,
                order.id, order_status_to_string(order.status));
         txn_rollback(ctx, "ORDER_LOCK_FAILED_ALREADY_CLAIMED");
@@ -124,8 +124,40 @@ bool txn_claim_order(TransactionContext *ctx, int order_id, int driver_id) {
     driver.current_order_id = order.id;
     db_update_driver(&driver);
 
+    /* Update Dispatch Tracking Database (`data/dispatches.dat`) */
+    DispatchRecord disp = {
+        .dispatch_id = db_get_next_dispatch_id(),
+        .order_id = order.id,
+        .driver_id = driver.id,
+        .equipment_used = order.equipment_needed,
+        .status = STATUS_OUT_FOR_DELIVERY
+    };
+    strncpy(disp.customer_name, order.customer_name, sizeof(disp.customer_name) - 1);
+    strncpy(disp.restaurant_name, order.restaurant_name, sizeof(disp.restaurant_name) - 1);
+    char time_str[32];
+    get_formatted_time(time_str, sizeof(time_str));
+    strncpy(disp.dispatch_time, time_str, sizeof(disp.dispatch_time) - 1);
+    snprintf(disp.delivery_eta, sizeof(disp.delivery_eta), "+%d mins", (int)(order.distance_km * 3.0f));
+    db_save_dispatch(&disp);
+
+    /* Update Equipment Inventory Database (`data/inventory.dat`) if specialized equipment needed */
+    if (order.equipment_needed != EQUIP_NONE) {
+        EquipmentInventory items[MAX_INVENTORY];
+        int inv_count = db_load_all_inventory(items, MAX_INVENTORY);
+        for (int i = 0; i < inv_count; i++) {
+            if (items[i].type == order.equipment_needed && !items[i].is_assigned) {
+                items[i].is_assigned = true;
+                items[i].assigned_to_driver_id = driver.id;
+                items[i].assigned_to_order_id = order.id;
+                db_save_inventory(&items[i]);
+                break;
+            }
+        }
+    }
+
     printf(ANSI_GREEN "  [Txn Executed] Order #%d assigned to Driver #%d (%s).\n" ANSI_RESET,
            order.id, driver.id, driver.name);
+    printf(ANSI_CYAN  "  [Multi-DB Sync] Synchronized across Orders, Drivers, Dispatches, and Inventory DBs.\n" ANSI_RESET);
     return true;
 }
 
@@ -151,6 +183,26 @@ bool txn_rollback(TransactionContext *ctx, const char *reason) {
             order.status = ctx->old_order_status;
             order.assigned_driver_id = 0;
             db_update_order(&order);
+        }
+
+        /* Rollback Dispatch Database Record */
+        DispatchRecord disp;
+        if (db_find_dispatch_by_order_id(ctx->order_id, &disp) == 0) {
+            disp.status = STATUS_CANCELLED;
+            db_save_dispatch(&disp);
+        }
+
+        /* Release Equipment Inventory */
+        EquipmentInventory items[MAX_INVENTORY];
+        int inv_count = db_load_all_inventory(items, MAX_INVENTORY);
+        for (int i = 0; i < inv_count; i++) {
+            if (items[i].assigned_to_order_id == ctx->order_id) {
+                items[i].is_assigned = false;
+                items[i].assigned_to_driver_id = 0;
+                items[i].assigned_to_order_id = 0;
+                db_save_inventory(&items[i]);
+                break;
+            }
         }
     }
 
